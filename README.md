@@ -18,7 +18,6 @@ A powerful command-line tool for generating Data Load Tool (DLT) extraction serv
 ```bash
 # Clone or download the DLT Generator
 git clone <repository-url>
-cd dlt-generator
 
 # Ensure Python 3.8+ is installed
 python --version
