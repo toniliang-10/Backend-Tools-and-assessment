@@ -1,75 +1,96 @@
-# [Service Name] - API Documentation
+# HubSpot Deals ETL Service - API Documentation
 
 ## 📋 Table of Contents
 1. [Overview](#overview)
 2. [Authentication](#authentication)
 3. [Base URLs](#base-urls)
 4. [Common Response Formats](#common-response-formats)
-5. [API Endpoints](#api-endpoints)
-6. [Health & Stats Endpoints](#health--stats-endpoints)
-7. [Error Handling](#error-handling)
-8. [Examples](#examples)
-9. [Rate Limiting](#rate-limiting)
-10. [Changelog](#changelog)
+5. [Scan Endpoints](#scan-endpoints)
+6. [Results Endpoints](#results-endpoints)
+7. [Pipeline & Maintenance Endpoints](#pipeline--maintenance-endpoints)
+8. [Health & Stats Endpoints](#health--stats-endpoints)
+9. [Error Handling](#error-handling)
+10. [Request/Response Examples](#requestresponse-examples)
+11. [Rate Limiting](#rate-limiting)
+
+---
 
 ## 🔍 Overview
 
-[Brief description of what your service does and its main purpose]
+The HubSpot Deals ETL Service is a RESTful API for extracting, transforming, and loading deal data from HubSpot CRM into a PostgreSQL database with multi-tenant support.
 
 ### API Version
-- **Version**: [e.g., 1.0.0]
-- **Base Path**: [e.g., `/api/v1`]
+- **Version**: 1.0.0
+- **Base Path**: `/api/v1`
 - **Content Type**: `application/json`
 - **Documentation**: Available at `/docs` (Swagger UI)
+- **OpenAPI Spec**: Available at `/swagger.json`
 
 ### Key Features
-- **[Feature 1]**: [Description]
-- **[Feature 2]**: [Description]
-- **[Feature 3]**: [Description]
-- **[Feature 4]**: [Description]
-- **[Feature 5]**: [Description]
+- **Asynchronous Deal Extraction**: Non-blocking scan operations with real-time progress tracking
+- **Multi-Tenant Support**: Isolated data storage per HubSpot portal
+- **Checkpoint & Resume**: Automatically resume failed extractions from last checkpoint
+- **Flexible Filtering**: Extract specific properties and deal segments
+- **Progress Monitoring**: Real-time status updates and progress tracking
+- **Data Export**: Export results in JSON, CSV, or Excel formats
+- **Rate Limit Handling**: Automatic retry with exponential backoff
+
+---
 
 ## 🔐 Authentication
 
-[Describe your authentication method - OAuth, API Keys, JWT, etc.]
+The service requires **HubSpot Private App Access Tokens** to authenticate requests to the HubSpot API.
 
-### Required Credentials
-- **[Credential 1]**: [Description]
-- **[Credential 2]**: [Description]
-- **[Credential 3]**: [Description]
+### Authentication Flow
 
-### Required Permissions
-- `[Permission 1]` - [Description]
-- `[Permission 2]` - [Description]
-- `[Permission 3]` - [Description]
+1. **Create a Private App** in your HubSpot account
+2. **Obtain Access Token** from the Private App settings
+3. **Include Token** in scan request configuration
 
-### Authentication Headers
-```
-Authorization: Bearer <token>
+### Required HubSpot Scopes
+
+The HubSpot Private App must have the following scopes:
+
+- `crm.objects.deals.read` - **Required** for reading deals
+- `crm.schemas.deals.read` - Optional for property schema discovery
+- `crm.objects.contacts.read` - Optional for contact associations
+- `crm.objects.companies.read` - Optional for company associations
+
+### Request Headers
+
+```http
 Content-Type: application/json
 ```
+
+**Note**: This service does not require authentication headers for its own API. Authentication is provided via the HubSpot access token in the scan configuration.
+
+---
 
 ## 🌐 Base URLs
 
 ### Development
 ```
-http://localhost:[PORT]
+http://localhost:5200
 ```
 
 ### Staging
 ```
-https://staging-api.your-domain.com
+http://localhost:5201
 ```
 
 ### Production
 ```
-https://api.your-domain.com
+http://localhost:5202
 ```
 
 ### Swagger Documentation
 ```
-http://localhost:[PORT]/docs
+http://localhost:5200/docs
 ```
+
+**Note**: Update these URLs based on your deployment configuration.
+
+---
 
 ## 📊 Common Response Formats
 
@@ -77,9 +98,9 @@ http://localhost:[PORT]/docs
 ```json
 {
   "status": "success",
-  "data": {},
   "message": "Operation completed successfully",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "data": {},
+  "timestamp": "2024-12-07T10:30:00Z"
 }
 ```
 
@@ -89,9 +110,10 @@ http://localhost:[PORT]/docs
   "status": "error",
   "message": "Input validation failed",
   "errors": {
-    "[field_name]": "Field is required"
+    "config.auth.accessToken": "This field is required",
+    "config.scanId": "Must be alphanumeric with hyphens/underscores only"
   },
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "2024-12-07T10:30:00Z"
 }
 ```
 
@@ -99,10 +121,13 @@ http://localhost:[PORT]/docs
 ```json
 {
   "status": "error",
-  "error_code": "RESOURCE_NOT_FOUND",
-  "message": "The requested resource was not found",
-  "details": {},
-  "timestamp": "2024-01-15T10:30:00Z"
+  "error_code": "SCAN_ALREADY_RUNNING",
+  "message": "A scan with this ID is already in progress",
+  "details": {
+    "scan_id": "hubspot-deals-scan-001",
+    "current_status": "running"
+  },
+  "timestamp": "2024-12-07T10:30:00Z"
 }
 ```
 
@@ -111,508 +136,1042 @@ http://localhost:[PORT]/docs
 {
   "pagination": {
     "current_page": 1,
-    "page_size": 50,
-    "total_items": 150,
-    "total_pages": 3,
-    "has_next": true,
-    "has_previous": false,
-    "next_page": 2,
-    "previous_page": null
-  }
-}
-```
-
-## 🔍 Scan Endpoints
-
-### 1. Start Extraction
-
-**POST** `/scan/start`
-
-Initiates a new calendar extraction process for the specified environment.
-
-#### Request Body
-```json
-{
-  "config": {
-    "scanId": "unique-scan-identifier",
-    "type": ["calendar"],
-    "auth": {
-      "[auth_key_1]": "[auth_value_1]",
-      "[auth_key_2]": "[auth_value_2]",
-      "[auth_key_n]": "[auth_value_n]"
-    },
-    "dateRange": {
-      "startDate": "2024-01-01",
-      "endDate": "2024-12-31"
-    },
-    "user_upns": [
-      "user1@company.com",
-      "user2@company.com"
-    ]
-  }
-}
-```
-
-#### Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `config.scanId` | string | Yes | Unique identifier for the scan (alphanumeric, hyphens, underscores only, max 255 chars) |
-| `config.type` | array | Yes | Service types to scan (must include "calendar") |
-| `config.auth.[auth_keys]` | string | Yes | Authentication credentials (service-specific keys and values) |
-| `config.dateRange.startDate` | string | Yes | Start date (YYYY-MM-DD format) |
-| `config.dateRange.endDate` | string | Yes | End date (YYYY-MM-DD format) |
-| `config.user_upns` | array | No | List of user emails to extract (optional) |
-
-#### Response
-```json
-{
-  "message": "Calendar extraction started",
-  "scanId": "unique-scan-identifier",
-  "status": "started"
-}
-```
-
-#### Status Codes
-- **202**: Extraction started successfully
-- **400**: Invalid request data
-- **409**: Extraction already in progress
-- **500**: Internal server error
-
----
-
-### 2. Get Extraction Status
-
-**GET** `/scan/status/{scan_id}`
-
-Retrieves the current status of an extraction process.
-
-#### Path Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `scan_id` | string | Yes | Unique scan identifier |
-
-#### Response (Existing Extraction)
-```json
-{
-  "id": "internal-job-id",
-  "scanId": "unique-scan-identifier",
-  "status": "running",
-  "started_at": "2024-01-15T10:30:00Z",
-  "completed_at": null,
-  "error_message": null,
-  "created_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:35:00Z",
-  "progress": {
-    "total_users": 10,
-    "completed_users": 6,
-    "total_events_extracted": 245,
-    "failed_users": 1,
-    "successful_users": 5
-  }
-}
-```
-
-#### Response (Non-existent Extraction)
-```json
-{
-  "id": null,
-  "scanId": null,
-  "status": "not_found",
-  "started_at": null,
-  "completed_at": null,
-  "error_message": null,
-  "created_at": null,
-  "updated_at": null
-}
-```
-
-#### Status Values
-- **pending**: Extraction queued but not started
-- **running**: Extraction in progress
-- **completed**: Extraction finished successfully
-- **failed**: Extraction failed with error
-- **cancelled**: Extraction cancelled by user
-- **not_found**: Extraction does not exist
-
-#### Status Codes
-- **200**: Always returns 200 (check `status` field for actual state)
-- **400**: Invalid scan ID format
-
----
-
-### 3. Cancel Extraction
-
-**POST** `/scan/cancel/{scan_id}`
-
-Cancels an ongoing extraction process.
-
-#### Path Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `scan_id` | string | Yes | Unique scan identifier |
-
-#### Response
-```json
-{
-  "message": "Extraction cancelled successfully",
-  "scanId": "unique-scan-identifier",
-  "status": "cancelled"
-}
-```
-
-#### Status Codes
-- **200**: Extraction cancelled successfully
-- **400**: Invalid scan ID format or extraction cannot be cancelled
-- **404**: Extraction not found
-- **500**: Internal server error
-
----
-
-### 4. Remove Extraction
-
-**DELETE** `/scan/remove/{scan_id}`
-
-Removes an extraction and all associated data from the system.
-
-#### Path Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `scan_id` | string | Yes | Unique scan identifier |
-
-#### Response
-```json
-{
-  "message": "Extraction and 1,234 events removed successfully",
-  "scanId": "unique-scan-identifier",
-  "status": "removed"
-}
-```
-
-#### Status Codes
-- **200**: Extraction removed successfully
-- **400**: Invalid scan ID format or extraction cannot be removed
-- **404**: Extraction not found
-- **500**: Internal server error
-
----
-
-### 5. Get Extraction Results
-
-**GET** `/scan/result/{scan_id}`
-
-Retrieves paginated extraction results with full event details.
-
-#### Path Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `scan_id` | string | Yes | Unique scan identifier |
-
-#### Query Parameters
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `page` | integer | No | 1 | Page number (minimum: 1) |
-| `page_size` | integer | No | 100 | Events per page (1-1000) |
-
-#### Response
-```json
-{
-  "scanId": "unique-scan-identifier",
-  "status": "completed",
-  "data": [],
-  "pagination": {
-    "current_page": 1,
     "page_size": 100,
-    "total_events": 1500,
+    "total_items": 1500,
     "total_pages": 15,
     "has_next": true,
     "has_previous": false,
     "next_page": 2,
     "previous_page": null
+  }
+}
+```
+
+---
+
+## 🔍 Scan Endpoints
+
+### 1. Start Deal Extraction
+
+**POST** `/api/v1/scan/start`
+
+Initiates a new deal extraction process from HubSpot CRM.
+
+#### Request Body Schema
+
+```json
+{
+  "config": {
+    "scanId": "string (required)",
+    "organizationId": "string (required)",
+    "type": ["deals"],
+    "auth": {
+      "accessToken": "string (required)"
+    },
+    "filters": {
+      "properties": ["array of property names"],
+      "dealstage": "string",
+      "pipeline": "string",
+      "includeArchived": "boolean",
+      "dateRange": {
+        "startDate": "YYYY-MM-DD",
+        "endDate": "YYYY-MM-DD"
+      }
+    },
+    "options": {
+      "batchSize": "integer (1-100)",
+      "maxRetries": "integer"
+    }
+  }
+}
+```
+
+#### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `config.scanId` | string | Yes | Unique identifier for the scan (alphanumeric, hyphens, underscores, max 255 chars) |
+| `config.organizationId` | string | Yes | HubSpot Portal ID (Hub ID) |
+| `config.type` | array | Yes | Must be `["deals"]` |
+| `config.auth.accessToken` | string | Yes | HubSpot Private App access token |
+| `config.filters.properties` | array | No | Specific deal properties to extract (default: all standard properties) |
+| `config.filters.dealstage` | string | No | Filter by specific deal stage |
+| `config.filters.pipeline` | string | No | Filter by specific pipeline |
+| `config.filters.includeArchived` | boolean | No | Include archived deals (default: false) |
+| `config.filters.dateRange` | object | No | Filter by date range |
+| `config.options.batchSize` | integer | No | Number of deals per API request (1-100, default: 100) |
+| `config.options.maxRetries` | integer | No | Max retry attempts for failed requests (default: 3) |
+
+#### Request Example
+
+```json
+{
+  "config": {
+    "scanId": "hubspot-deals-dec-2024",
+    "organizationId": "12345678",
+    "type": ["deals"],
+    "auth": {
+      "accessToken": "pat-na1-11111111-2222-3333-4444-555555555555"
+    },
+    "filters": {
+      "properties": [
+        "dealname",
+        "amount",
+        "dealstage",
+        "pipeline",
+        "closedate",
+        "hubspot_owner_id"
+      ],
+      "includeArchived": false,
+      "dateRange": {
+        "startDate": "2024-01-01",
+        "endDate": "2024-12-31"
+      }
+    },
+    "options": {
+      "batchSize": 100,
+      "maxRetries": 3
+    }
+  }
+}
+```
+
+#### Response (202 Accepted)
+
+```json
+{
+  "status": "success",
+  "message": "Deal extraction started successfully",
+  "data": {
+    "scanId": "hubspot-deals-dec-2024",
+    "organizationId": "12345678",
+    "status": "pending",
+    "jobId": "550e8400-e29b-41d4-a716-446655440000",
+    "startedAt": "2024-12-07T10:30:00Z"
   },
-  "count": 100,
-  "total_count": 1500,
-  "started_at": "2024-01-15T10:30:00Z",
-  "completed_at": "2024-01-15T10:45:00Z",
-  "error_message": null
+  "timestamp": "2024-12-07T10:30:00Z"
 }
 ```
 
 #### Status Codes
-- **200**: Results retrieved successfully
-- **400**: Invalid scan ID format or pagination parameters
-- **404**: Extraction not found
-- **500**: Internal server error
+- **202 Accepted**: Extraction started successfully
+- **400 Bad Request**: Invalid request data or missing required fields
+- **409 Conflict**: Scan with same ID already in progress
+- **422 Unprocessable Entity**: HubSpot authentication failed
+- **500 Internal Server Error**: Server error
 
 ---
 
-### 6. Download Extraction Results
+### 2. Get Extraction Status
 
-**GET** `/scan/download/{scan_id}/{format}`
+**GET** `/api/v1/scan/{scan_id}/status`
+
+Retrieves the current status and progress of a deal extraction.
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | Yes | Unique scan identifier |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "scanId": "hubspot-deals-dec-2024",
+    "organizationId": "12345678",
+    "status": "running",
+    "progress": {
+      "totalDeals": 1500,
+      "processedDeals": 750,
+      "failedDeals": 5,
+      "percentComplete": 50.0,
+      "dealsPerSecond": 12.5
+    },
+    "timing": {
+      "startedAt": "2024-12-07T10:30:00Z",
+      "completedAt": null,
+      "elapsedSeconds": 60,
+      "estimatedRemainingSeconds": 60
+    },
+    "checkpoint": {
+      "lastProcessedId": "12345678901",
+      "cursor": "MTIzNDU2Nzg5MDE=",
+      "pageNumber": 8
+    },
+    "errorMessage": null,
+    "createdAt": "2024-12-07T10:30:00Z",
+    "updatedAt": "2024-12-07T10:31:00Z"
+  },
+  "timestamp": "2024-12-07T10:31:00Z"
+}
+```
+
+#### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Scan queued but not started |
+| `running` | Extraction in progress |
+| `completed` | Extraction finished successfully |
+| `failed` | Extraction failed with error |
+| `cancelled` | Extraction cancelled by user |
+| `paused` | Extraction paused (can be resumed) |
+
+#### Status Codes
+- **200 OK**: Status retrieved successfully
+- **404 Not Found**: Scan ID not found
+
+---
+
+### 3. Cancel Extraction
+
+**POST** `/api/v1/scan/{scan_id}/cancel`
+
+Cancels an ongoing deal extraction process.
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | Yes | Unique scan identifier |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "message": "Extraction cancelled successfully",
+  "data": {
+    "scanId": "hubspot-deals-dec-2024",
+    "status": "cancelled",
+    "processedDeals": 750,
+    "cancelledAt": "2024-12-07T10:35:00Z"
+  },
+  "timestamp": "2024-12-07T10:35:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Extraction cancelled successfully
+- **400 Bad Request**: Extraction cannot be cancelled (not in running/pending state)
+- **404 Not Found**: Scan ID not found
+
+---
+
+### 4. Remove Extraction
+
+**DELETE** `/api/v1/scan/{scan_id}/remove`
+
+Removes a scan job and all associated deal data.
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | Yes | Unique scan identifier |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "message": "Extraction and 1,500 deals removed successfully",
+  "data": {
+    "scanId": "hubspot-deals-dec-2024",
+    "dealsRemoved": 1500,
+    "status": "removed"
+  },
+  "timestamp": "2024-12-07T10:40:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Extraction removed successfully
+- **400 Bad Request**: Cannot remove running extraction
+- **404 Not Found**: Scan ID not found
+
+---
+
+### 5. List All Scans
+
+**GET** `/api/v1/scan/list`
+
+Retrieves a paginated list of all scan jobs.
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `organizationId` | string | No | - | Filter by HubSpot Portal ID |
+| `status` | string | No | - | Filter by status (pending, running, completed, failed) |
+| `limit` | integer | No | 50 | Number of results per page (1-100) |
+| `offset` | integer | No | 0 | Number of results to skip |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scans": [
+      {
+        "scanId": "hubspot-deals-dec-2024",
+        "organizationId": "12345678",
+        "status": "completed",
+        "totalDeals": 1500,
+        "processedDeals": 1500,
+        "startedAt": "2024-12-07T10:30:00Z",
+        "completedAt": "2024-12-07T10:35:00Z",
+        "duration": "5m 15s"
+      },
+      {
+        "scanId": "hubspot-deals-nov-2024",
+        "organizationId": "12345678",
+        "status": "completed",
+        "totalDeals": 1200,
+        "processedDeals": 1200,
+        "startedAt": "2024-11-07T08:00:00Z",
+        "completedAt": "2024-11-07T08:04:00Z",
+        "duration": "4m 10s"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "page_size": 50,
+      "total_items": 25,
+      "total_pages": 1,
+      "has_next": false,
+      "has_previous": false
+    }
+  },
+  "timestamp": "2024-12-07T10:45:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Scans retrieved successfully
+
+---
+
+### 6. Get Scan Statistics
+
+**GET** `/api/v1/scan/statistics`
+
+Retrieves aggregated statistics across all scans for a tenant.
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `organizationId` | string | Yes | HubSpot Portal ID |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "organizationId": "12345678",
+    "totalScans": 12,
+    "completedScans": 10,
+    "failedScans": 1,
+    "cancelledScans": 1,
+    "totalDealsExtracted": 18500,
+    "averageDealsPerScan": 1541,
+    "averageScanDuration": "4m 30s",
+    "lastScanDate": "2024-12-07T10:30:00Z",
+    "successRate": 83.33
+  },
+  "timestamp": "2024-12-07T10:50:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Statistics retrieved successfully
+- **400 Bad Request**: Missing organizationId parameter
+
+---
+
+## 📥 Results Endpoints
+
+### 7. Get Available Tables
+
+**GET** `/api/v1/results/{scan_id}/tables`
+
+Retrieves list of available data tables for a completed scan.
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | Yes | Unique scan identifier |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scanId": "hubspot-deals-dec-2024",
+    "organizationId": "12345678",
+    "tables": [
+      {
+        "name": "deals",
+        "rowCount": 1500,
+        "schema": "hubspot_deals_12345678"
+      }
+    ]
+  },
+  "timestamp": "2024-12-07T11:00:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Tables retrieved successfully
+- **404 Not Found**: Scan ID not found
+
+---
+
+### 8. Get Extraction Results
+
+**GET** `/api/v1/results/{scan_id}/result`
+
+Retrieves paginated deal data from a completed extraction.
+
+#### Path Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | Yes | Unique scan identifier |
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `tableName` | string | No | deals | Table name to query |
+| `limit` | integer | No | 100 | Number of results per page (1-1000) |
+| `offset` | integer | No | 0 | Number of results to skip |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scanId": "hubspot-deals-dec-2024",
+    "tableName": "deals",
+    "results": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "hs_object_id": "12345678901",
+        "dealname": "Enterprise Deal - Acme Corp",
+        "amount": 50000.00,
+        "dealstage": "qualifiedtobuy",
+        "pipeline": "default",
+        "closedate": "2024-12-31T00:00:00Z",
+        "hubspot_owner_id": "123456",
+        "_tenant_id": "12345678",
+        "_scan_id": "hubspot-deals-dec-2024",
+        "_extracted_at": "2024-12-07T10:32:15Z",
+        "created_at": "2024-01-15T14:30:00Z",
+        "updated_at": "2024-12-01T10:15:30Z"
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "hs_object_id": "12345678902",
+        "dealname": "Professional Services - Beta Inc",
+        "amount": 25000.00,
+        "dealstage": "closedwon",
+        "pipeline": "default",
+        "closedate": "2024-11-15T00:00:00Z",
+        "hubspot_owner_id": "123457",
+        "_tenant_id": "12345678",
+        "_scan_id": "hubspot-deals-dec-2024",
+        "_extracted_at": "2024-12-07T10:32:20Z",
+        "created_at": "2024-02-20T09:00:00Z",
+        "updated_at": "2024-11-15T16:45:00Z"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "page_size": 100,
+      "total_items": 1500,
+      "total_pages": 15,
+      "has_next": true,
+      "has_previous": false,
+      "next_page": 2,
+      "previous_page": null
+    },
+    "totalCount": 1500
+  },
+  "timestamp": "2024-12-07T11:05:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Results retrieved successfully
+- **404 Not Found**: Scan ID not found
+- **400 Bad Request**: Invalid pagination parameters
+
+---
+
+### 9. Download Extraction Results
+
+**GET** `/api/v1/results/{scan_id}/download/{format}`
 
 Downloads extraction results in the specified format.
 
 #### Path Parameters
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scan_id` | string | Yes | Unique scan identifier |
-| `format` | string | Yes | Download format (json, csv, excel) |
+| `format` | string | Yes | Download format: `json`, `csv`, or `excel` |
 
 #### Supported Formats
-- **json**: JSON format with pretty printing
-- **csv**: Comma-separated values with headers
-- **excel**: Microsoft Excel (.xlsx) format
 
-#### Response
-File download with appropriate content-type and Content-Disposition headers:
-- **JSON**: `Content-Type: application/json`
-- **CSV**: `Content-Type: text/csv`
-- **Excel**: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+| Format | Content-Type | File Extension |
+|--------|-------------|----------------|
+| `json` | application/json | .json |
+| `csv` | text/csv | .csv |
+| `excel` | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet | .xlsx |
+
+#### Response (200 OK)
+
+File download with appropriate Content-Disposition header:
+
+```http
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+Content-Disposition: attachment; filename="hubspot-deals-dec-2024.xlsx"
+```
 
 #### Status Codes
-- **200**: File download initiated
-- **400**: Invalid scan ID format or unsupported format
-- **404**: Extraction not found
-- **500**: Internal server error
+- **200 OK**: File download initiated
+- **400 Bad Request**: Invalid format specified
+- **404 Not Found**: Scan ID not found or no data available
+- **500 Internal Server Error**: Error generating file
 
-#### Example URLs
+---
+
+## 🔧 Pipeline & Maintenance Endpoints
+
+### 10. Get Pipeline Info
+
+**GET** `/api/v1/pipeline/info`
+
+Retrieves information about the DLT pipeline configuration.
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "pipelineName": "hubspot_deals_pipeline_dev",
+    "destination": "postgres",
+    "workingDirectory": "/app/.dlt",
+    "database": {
+      "host": "postgres_dev",
+      "port": 5432,
+      "database": "hubspot_deals_data_dev",
+      "schema": "hubspot_deals_dev"
+    },
+    "version": "0.4.0",
+    "state": {
+      "lastRun": "2024-12-07T10:35:00Z",
+      "totalRuns": 12
+    }
+  },
+  "timestamp": "2024-12-07T11:10:00Z"
+}
 ```
-GET /scan/download/my-scan-001/json
-GET /scan/download/my-scan-001/csv
-GET /scan/download/my-scan-001/excel
+
+#### Status Codes
+- **200 OK**: Pipeline info retrieved successfully
+
+---
+
+### 11. Cleanup Old Scans
+
+**POST** `/api/v1/maintenance/cleanup`
+
+Removes old completed scan jobs and their associated data.
+
+#### Request Body
+
+```json
+{
+  "daysOld": 90,
+  "organizationId": "12345678",
+  "dryRun": false
+}
 ```
+
+#### Request Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `daysOld` | integer | Yes | - | Remove scans older than this many days |
+| `organizationId` | string | No | - | Filter by specific organization |
+| `dryRun` | boolean | No | false | Preview what would be deleted without deleting |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "message": "Cleanup completed successfully",
+  "data": {
+    "scansRemoved": 5,
+    "dealsRemoved": 7500,
+    "spaceSaved": "125 MB",
+    "dryRun": false
+  },
+  "timestamp": "2024-12-07T11:15:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Cleanup completed successfully
+- **400 Bad Request**: Invalid parameters
+
+---
+
+### 12. Detect Crashed Jobs
+
+**POST** `/api/v1/maintenance/detect-crashed`
+
+Detects and marks jobs that have crashed or timed out.
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `timeoutMinutes` | integer | No | 60 | Consider jobs crashed after this many minutes without updates |
+
+#### Response (200 OK)
+
+```json
+{
+  "status": "success",
+  "message": "Detected 2 crashed jobs",
+  "data": {
+    "crashedJobs": [
+      {
+        "scanId": "hubspot-deals-crashed-001",
+        "organizationId": "12345678",
+        "lastUpdate": "2024-12-07T08:00:00Z",
+        "minutesStale": 180
+      },
+      {
+        "scanId": "hubspot-deals-crashed-002",
+        "organizationId": "12345678",
+        "lastUpdate": "2024-12-07T07:30:00Z",
+        "minutesStale": 210
+      }
+    ],
+    "markedAsFailed": 2
+  },
+  "timestamp": "2024-12-07T11:20:00Z"
+}
+```
+
+#### Status Codes
+- **200 OK**: Detection completed successfully
 
 ---
 
 ## 🏥 Health & Stats Endpoints
 
-### 1. Health Check
+### 13. Health Check
 
 **GET** `/health`
 
 Returns the overall health status of the service.
 
-#### Response (Healthy)
+#### Response (200 OK - Healthy)
+
 ```json
 {
   "status": "healthy",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "service": "[Service Name]",
+  "timestamp": "2024-12-07T11:25:00Z",
+  "service": "HubSpot Deals ETL Service",
   "version": "1.0.0",
   "checks": {
     "database": "healthy",
-    "cache": "healthy",
-    "external_api": "healthy"
+    "dlt_pipeline": "healthy",
+    "disk_space": "healthy"
+  },
+  "details": {
+    "database": {
+      "connected": true,
+      "responseTime": "5ms"
+    },
+    "disk_space": {
+      "available": "50 GB",
+      "usage": "60%"
+    }
   }
 }
 ```
 
-#### Response (Unhealthy)
+#### Response (503 Service Unavailable - Unhealthy)
+
 ```json
 {
   "status": "unhealthy",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "service": "[Service Name]",
+  "timestamp": "2024-12-07T11:25:00Z",
+  "service": "HubSpot Deals ETL Service",
   "version": "1.0.0",
   "checks": {
     "database": "unhealthy: connection timeout",
-    "cache": "healthy",
-    "external_api": "degraded: high latency"
+    "dlt_pipeline": "healthy",
+    "disk_space": "degraded: low disk space"
+  },
+  "details": {
+    "database": {
+      "connected": false,
+      "error": "Connection timeout after 5 seconds"
+    },
+    "disk_space": {
+      "available": "2 GB",
+      "usage": "95%",
+      "warning": "Low disk space"
+    }
   }
 }
 ```
 
 #### Status Codes
-- **200**: Service is healthy
-- **503**: Service is unhealthy
+- **200 OK**: Service is healthy
+- **503 Service Unavailable**: Service is unhealthy
 
 ---
 
-### 2. Service Statistics
+### 14. Service Statistics
 
 **GET** `/stats`
 
 Returns comprehensive service statistics and performance metrics.
 
-#### Response
+#### Response (200 OK)
+
 ```json
 {
-  "total_requests": 15000,
-  "active_connections": 23,
-  "success_rate": 99.5,
-  "average_response_time": 125.5,
-  "errors_last_hour": 5,
-  "uptime": "7 days, 3:24:15",
-  "memory_usage": "512MB",
-  "cpu_usage": "15%",
-  "last_restart": "2024-01-08T10:30:00Z"
+  "status": "success",
+  "data": {
+    "service": {
+      "name": "HubSpot Deals ETL Service",
+      "version": "1.0.0",
+      "uptime": "7 days, 3 hours, 24 minutes",
+      "startedAt": "2024-11-30T08:00:00Z"
+    },
+    "scans": {
+      "total": 125,
+      "running": 3,
+      "completed": 110,
+      "failed": 8,
+      "cancelled": 4
+    },
+    "deals": {
+      "totalExtracted": 187500,
+      "averagePerScan": 1500
+    },
+    "performance": {
+      "averageScanDuration": "4m 45s",
+      "averageDealsPerSecond": 5.26,
+      "successRate": 88.0
+    },
+    "system": {
+      "memoryUsage": "512 MB",
+      "cpuUsage": "15%",
+      "diskUsage": "60%",
+      "activeConnections": 23
+    }
+  },
+  "timestamp": "2024-12-07T11:30:00Z"
 }
 ```
 
 #### Status Codes
-- **200**: Statistics retrieved successfully
-- **500**: Internal server error
+- **200 OK**: Statistics retrieved successfully
 
 ---
 
 ## ⚠️ Error Handling
 
-### Error Response Formats
+### Error Response Format
 
-#### Validation Errors (400)
-Returned for input validation failures:
+All errors follow a consistent structure:
+
+```json
+{
+  "status": "error",
+  "error_code": "ERROR_CODE",
+  "message": "Human-readable error message",
+  "details": {},
+  "timestamp": "2024-12-07T11:35:00Z"
+}
+```
+
+### Common Error Codes
+
+| HTTP Status | Error Code | Description |
+|------------|------------|-------------|
+| 400 | `VALIDATION_ERROR` | Input validation failed |
+| 400 | `INVALID_SCAN_ID` | Invalid scan ID format |
+| 400 | `INVALID_DATE_RANGE` | Invalid date range specified |
+| 401 | `UNAUTHORIZED` | Authentication required |
+| 403 | `FORBIDDEN` | Insufficient permissions |
+| 404 | `SCAN_NOT_FOUND` | Scan ID not found |
+| 409 | `SCAN_ALREADY_RUNNING` | Scan with same ID already in progress |
+| 422 | `HUBSPOT_AUTH_FAILED` | HubSpot authentication failed |
+| 422 | `HUBSPOT_INVALID_TOKEN` | Invalid HubSpot access token |
+| 422 | `HUBSPOT_INSUFFICIENT_SCOPES` | Missing required HubSpot scopes |
+| 429 | `RATE_LIMIT_EXCEEDED` | Too many requests |
+| 500 | `INTERNAL_ERROR` | Server error |
+| 503 | `SERVICE_UNAVAILABLE` | Service temporarily unavailable |
+
+### Error Examples
+
+#### Validation Error (400)
+
 ```json
 {
   "status": "error",
   "error_code": "VALIDATION_ERROR",
   "message": "Input validation failed",
   "errors": {
-    "[field_name]": "[error_message]"
+    "config.scanId": "This field is required",
+    "config.auth.accessToken": "This field is required",
+    "config.organizationId": "Must be a valid HubSpot Portal ID"
   },
-  "timestamp": "2024-01-15T10:30:00Z"
+  "timestamp": "2024-12-07T11:40:00Z"
 }
 ```
 
-#### Authentication Errors (401)
+#### HubSpot Authentication Error (422)
+
 ```json
 {
   "status": "error",
-  "error_code": "UNAUTHORIZED",
-  "message": "Authentication required",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "error_code": "HUBSPOT_AUTH_FAILED",
+  "message": "Failed to authenticate with HubSpot API",
+  "details": {
+    "hubspotError": "The access token provided is invalid",
+    "suggestion": "Verify your HubSpot Private App access token is correct and not expired"
+  },
+  "timestamp": "2024-12-07T11:45:00Z"
 }
 ```
 
-#### Authorization Errors (403)
+#### Scan Already Running (409)
+
 ```json
 {
   "status": "error",
-  "error_code": "FORBIDDEN",
-  "message": "Insufficient permissions",
-  "timestamp": "2024-01-15T10:30:00Z"
+  "error_code": "SCAN_ALREADY_RUNNING",
+  "message": "A scan with this ID is already in progress",
+  "details": {
+    "scanId": "hubspot-deals-dec-2024",
+    "currentStatus": "running",
+    "startedAt": "2024-12-07T10:30:00Z",
+    "suggestion": "Wait for the current scan to complete or use a different scan ID"
+  },
+  "timestamp": "2024-12-07T11:50:00Z"
 }
 ```
 
-#### Not Found Errors (404)
-```json
-{
-  "status": "error",
-  "error_code": "NOT_FOUND",
-  "message": "Resource not found",
-  "resource_id": "[id]",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
+#### Rate Limit Error (429)
 
-#### Conflict Errors (409)
-```json
-{
-  "status": "error",
-  "error_code": "CONFLICT",
-  "message": "Resource already exists",
-  "conflicting_field": "[field_name]",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
-#### Rate Limit Errors (429)
 ```json
 {
   "status": "error",
   "error_code": "RATE_LIMIT_EXCEEDED",
   "message": "Too many requests",
-  "retry_after": 60,
-  "timestamp": "2024-01-15T10:30:00Z"
+  "details": {
+    "retryAfter": 60,
+    "limit": 100,
+    "window": "10 seconds"
+  },
+  "timestamp": "2024-12-07T11:55:00Z"
 }
 ```
-
-#### Server Errors (500)
-```json
-{
-  "status": "error",
-  "error_code": "INTERNAL_ERROR",
-  "message": "An unexpected error occurred",
-  "incident_id": "inc_123456",
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
-### Common Error Codes
-
-| Code | Description |
-|------|-------------|
-| `VALIDATION_ERROR` | Input validation failed |
-| `UNAUTHORIZED` | Authentication required |
-| `FORBIDDEN` | Insufficient permissions |
-| `NOT_FOUND` | Resource not found |
-| `CONFLICT` | Resource already exists |
-| `RATE_LIMIT_EXCEEDED` | Too many requests |
-| `INTERNAL_ERROR` | Server error |
-| `SERVICE_UNAVAILABLE` | Service temporarily unavailable |
 
 ---
 
-## 📚 Examples
+## 📚 Request/Response Examples
 
 ### Complete Extraction Workflow
 
-#### 1. Start Extraction
+#### Step 1: Start Extraction
+
+**Request:**
 ```bash
-curl -X POST "https://api.your-domain.com/scan/start" \
+curl -X POST "http://localhost:5200/api/v1/scan/start" \
   -H "Content-Type: application/json" \
   -d '{
     "config": {
-      "scanId": "weekly-sync-001",
-      "type": ["calendar"],
+      "scanId": "hubspot-deals-q4-2024",
+      "organizationId": "12345678",
+      "type": ["deals"],
       "auth": {
-        "[auth_key_1]": "[auth_value_1]",
-        "[auth_key_2]": "[auth_value_2]"
+        "accessToken": "pat-na1-11111111-2222-3333-4444-555555555555"
       },
-      "dateRange": {
-        "startDate": "2024-01-01",
-        "endDate": "2024-01-31"
+      "filters": {
+        "properties": [
+          "dealname",
+          "amount",
+          "dealstage",
+          "pipeline",
+          "closedate",
+          "hubspot_owner_id",
+          "hs_forecast_probability"
+        ],
+        "dateRange": {
+          "startDate": "2024-10-01",
+          "endDate": "2024-12-31"
+        },
+        "includeArchived": false
       },
-      "user_upns": [
-        "alice@company.com",
-        "bob@company.com"
-      ]
+      "options": {
+        "batchSize": 100,
+        "maxRetries": 3
+      }
     }
   }'
 ```
 
-#### 2. Monitor Progress
-```bash
-curl "https://api.your-domain.com/scan/status/weekly-sync-001"
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Deal extraction started successfully",
+  "data": {
+    "scanId": "hubspot-deals-q4-2024",
+    "organizationId": "12345678",
+    "status": "pending",
+    "jobId": "550e8400-e29b-41d4-a716-446655440000",
+    "startedAt": "2024-12-07T12:00:00Z"
+  },
+  "timestamp": "2024-12-07T12:00:00Z"
+}
 ```
 
-#### 3. Get Results
+---
+
+#### Step 2: Monitor Progress
+
+**Request:**
 ```bash
-curl "https://api.your-domain.com/scan/result/weekly-sync-001?page=1&page_size=50"
+curl "http://localhost:5200/api/v1/scan/hubspot-deals-q4-2024/status"
 ```
 
-#### 4. Download Results
-```bash
-# Download as CSV
-curl "https://api.your-domain.com/scan/download/weekly-sync-001/csv" \
-  -o "calendar_results.csv"
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "scanId": "hubspot-deals-q4-2024",
+    "organizationId": "12345678",
+    "status": "running",
+    "progress": {
+      "totalDeals": 1000,
+      "processedDeals": 650,
+      "failedDeals": 0,
+      "percentComplete": 65.0,
+      "dealsPerSecond": 10.83
+    },
+    "timing": {
+      "startedAt": "2024-12-07T12:00:00Z",
+      "completedAt": null,
+      "elapsedSeconds": 60,
+      "estimatedRemainingSeconds": 32
+    },
+    "checkpoint": {
+      "lastProcessedId": "12345678650",
+      "cursor": "MTIzNDU2Nzg2NTA=",
+      "pageNumber": 7
+    },
+    "errorMessage": null,
+    "createdAt": "2024-12-07T12:00:00Z",
+    "updatedAt": "2024-12-07T12:01:00Z"
+  },
+  "timestamp": "2024-12-07T12:01:00Z"
+}
+```
 
+---
+
+#### Step 3: Get Results
+
+**Request:**
+```bash
+curl "http://localhost:5200/api/v1/results/hubspot-deals-q4-2024/result?limit=5"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "scanId": "hubspot-deals-q4-2024",
+    "tableName": "deals",
+    "results": [
+      {
+        "id": "uuid-1",
+        "hs_object_id": "12345678901",
+        "dealname": "Enterprise Deal - Acme Corp",
+        "amount": 50000.00,
+        "dealstage": "qualifiedtobuy",
+        "pipeline": "default",
+        "closedate": "2024-12-31T00:00:00Z",
+        "hubspot_owner_id": "123456",
+        "hs_forecast_probability": 0.4000,
+        "_tenant_id": "12345678",
+        "_scan_id": "hubspot-deals-q4-2024",
+        "_extracted_at": "2024-12-07T12:01:30Z"
+      }
+    ],
+    "pagination": {
+      "current_page": 1,
+      "page_size": 5,
+      "total_items": 1000,
+      "total_pages": 200,
+      "has_next": true,
+      "has_previous": false
+    },
+    "totalCount": 1000
+  },
+  "timestamp": "2024-12-07T12:05:00Z"
+}
+```
+
+---
+
+#### Step 4: Download Results
+
+**Request:**
+```bash
 # Download as Excel
-curl "https://api.your-domain.com/scan/download/weekly-sync-001/excel" \
-  -o "calendar_results.xlsx"
+curl "http://localhost:5200/api/v1/results/hubspot-deals-q4-2024/download/excel" \
+  -o "hubspot_deals_q4_2024.xlsx"
+
+# Download as CSV
+curl "http://localhost:5200/api/v1/results/hubspot-deals-q4-2024/download/csv" \
+  -o "hubspot_deals_q4_2024.csv"
 
 # Download as JSON
-curl "https://api.your-domain.com/scan/download/weekly-sync-001/json" \
-  -o "calendar_results.json"
+curl "http://localhost:5200/api/v1/results/hubspot-deals-q4-2024/download/json" \
+  -o "hubspot_deals_q4_2024.json"
 ```
 
-#### 5. Cancel Extraction (if needed)
-```bash
-curl -X POST "https://api.your-domain.com/scan/cancel/weekly-sync-001"
-```
-
-#### 6. Remove Extraction (cleanup)
-```bash
-curl -X DELETE "https://api.your-domain.com/scan/remove/weekly-sync-001"
-```
+---
 
 ### PowerShell Examples
 
@@ -620,36 +1179,52 @@ curl -X DELETE "https://api.your-domain.com/scan/remove/weekly-sync-001"
 ```powershell
 $body = @{
   config = @{
-    scanId = "powershell-test-001"
-    type = @("calendar")
+    scanId = "hubspot-deals-powershell-001"
+    organizationId = "12345678"
+    type = @("deals")
     auth = @{
-      "[auth_key_1]" = "[auth_value_1]"
-      "[auth_key_2]" = "[auth_value_2]"
+      accessToken = "pat-na1-11111111-2222-3333-4444-555555555555"
     }
-    dateRange = @{
-      startDate = "2024-01-01"
-      endDate = "2024-01-31"
+    filters = @{
+      properties = @(
+        "dealname",
+        "amount",
+        "dealstage"
+      )
+      includeArchived = $false
     }
-    user_upns = @("user@company.com")
   }
 } | ConvertTo-Json -Depth 10
 
-Invoke-RestMethod -Uri "https://api.your-domain.com/scan/start" -Method Post -Body $body -ContentType "application/json"
+$response = Invoke-RestMethod `
+  -Uri "http://localhost:5200/api/v1/scan/start" `
+  -Method Post `
+  -Body $body `
+  -ContentType "application/json"
+
+Write-Output $response
 ```
 
 #### Get Status
 ```powershell
-Invoke-RestMethod -Uri "https://api.your-domain.com/scan/status/powershell-test-001"
+$scanId = "hubspot-deals-powershell-001"
+$status = Invoke-RestMethod `
+  -Uri "http://localhost:5200/api/v1/scan/$scanId/status" `
+  -Method Get
+
+Write-Output "Status: $($status.data.status)"
+Write-Output "Progress: $($status.data.progress.percentComplete)%"
 ```
 
 #### Download Results
 ```powershell
-# Download Excel file
-Invoke-WebRequest -Uri "https://api.your-domain.com/scan/download/powershell-test-001/excel" -OutFile "results.xlsx"
-
-# Download CSV file
-Invoke-WebRequest -Uri "https://api.your-domain.com/scan/download/powershell-test-001/csv" -OutFile "results.csv"
+$scanId = "hubspot-deals-powershell-001"
+Invoke-WebRequest `
+  -Uri "http://localhost:5200/api/v1/results/$scanId/download/excel" `
+  -OutFile "deals_export.xlsx"
 ```
+
+---
 
 ### Python Examples
 
@@ -657,20 +1232,25 @@ Invoke-WebRequest -Uri "https://api.your-domain.com/scan/download/powershell-tes
 ```python
 import requests
 
-url = "https://api.your-domain.com/scan/start"
+url = "http://localhost:5200/api/v1/scan/start"
 payload = {
     "config": {
-        "scanId": "python-test-001",
-        "type": ["calendar"],
+        "scanId": "hubspot-deals-python-001",
+        "organizationId": "12345678",
+        "type": ["deals"],
         "auth": {
-            "[auth_key_1]": "[auth_value_1]",
-            "[auth_key_2]": "[auth_value_2]"
+            "accessToken": "pat-na1-11111111-2222-3333-4444-555555555555"
         },
-        "dateRange": {
-            "startDate": "2024-01-01",
-            "endDate": "2024-01-31"
-        },
-        "user_upns": ["user@company.com"]
+        "filters": {
+            "properties": [
+                "dealname",
+                "amount",
+                "dealstage",
+                "pipeline",
+                "closedate"
+            ],
+            "includeArchived": False
+        }
     }
 }
 
@@ -683,38 +1263,49 @@ print(response.json())
 import requests
 import time
 
-scan_id = "python-test-001"
-url = f"https://api.your-domain.com/scan/status/{scan_id}"
+scan_id = "hubspot-deals-python-001"
+url = f"http://localhost:5200/api/v1/scan/{scan_id}/status"
 
 while True:
     response = requests.get(url)
-    status = response.json()
+    data = response.json()["data"]
     
-    print(f"Status: {status['status']}")
+    status = data["status"]
+    progress = data.get("progress", {})
+    percent = progress.get("percentComplete", 0)
     
-    if status['status'] in ['completed', 'failed', 'cancelled', 'not_found']:
+    print(f"Status: {status} - Progress: {percent:.1f}%")
+    
+    if status in ["completed", "failed", "cancelled"]:
         break
     
-    time.sleep(10)  # Check every 10 seconds
+    time.sleep(5)  # Check every 5 seconds
+
+print("Extraction finished!")
 ```
 
 #### Get Paginated Results
 ```python
 import requests
 
-scan_id = "python-test-001"
+scan_id = "hubspot-deals-python-001"
+base_url = f"http://localhost:5200/api/v1/results/{scan_id}/result"
+
+all_deals = []
 page = 1
-all_events = []
+page_size = 100
 
 while True:
-    url = f"https://api.your-domain.com/scan/result/{scan_id}?page={page}&page_size=100"
-    response = requests.get(url)
+    params = {"limit": page_size, "offset": (page - 1) * page_size}
+    response = requests.get(base_url, params=params)
     
     if response.status_code == 200:
-        data = response.json()
-        all_events.extend(data['data'])
+        data = response.json()["data"]
+        deals = data["results"]
+        all_deals.extend(deals)
         
-        if not data['pagination']['has_next']:
+        pagination = data["pagination"]
+        if not pagination["has_next"]:
             break
         
         page += 1
@@ -722,30 +1313,87 @@ while True:
         print(f"Error: {response.status_code}")
         break
 
-print(f"Total events retrieved: {len(all_events)}")
+print(f"Total deals retrieved: {len(all_deals)}")
 ```
 
 #### Download Results
 ```python
 import requests
 
-scan_id = "python-test-001"
+scan_id = "hubspot-deals-python-001"
+formats = ["json", "csv", "excel"]
 
-# Download different formats
-formats = ['json', 'csv', 'excel']
 for fmt in formats:
-    url = f"https://api.your-domain.com/scan/download/{scan_id}/{fmt}"
+    url = f"http://localhost:5200/api/v1/results/{scan_id}/download/{fmt}"
     response = requests.get(url)
     
     if response.status_code == 200:
-        filename = f"calendar_results.{fmt if fmt != 'excel' else 'xlsx'}"
-        with open(filename, 'wb') as f:
+        ext = "xlsx" if fmt == "excel" else fmt
+        filename = f"deals_export.{ext}"
+        
+        with open(filename, "wb") as f:
             f.write(response.content)
+        
         print(f"Downloaded {filename}")
     else:
         print(f"Failed to download {fmt}: {response.status_code}")
 ```
 
-#### Error Handling
-```python
-import requests
+---
+
+## 🚦 Rate Limiting
+
+### Service Rate Limits
+
+The service itself has no rate limiting, but be aware of HubSpot API rate limits:
+
+#### HubSpot API Limits
+- **100 requests per 10 seconds** per access token
+- **Daily limits** vary by subscription tier
+- **Burst limit**: 150 requests per 10 seconds (short duration)
+
+### Rate Limit Headers
+
+When the service makes requests to HubSpot, it monitors these headers:
+
+```http
+X-HubSpot-RateLimit-Max: 100
+X-HubSpot-RateLimit-Remaining: 95
+X-HubSpot-RateLimit-Interval-Milliseconds: 10000
+```
+
+### Automatic Retry
+
+The service automatically handles HubSpot rate limits with:
+- **Exponential backoff**: Waits progressively longer between retries
+- **Max retries**: Configurable (default: 3)
+- **Retry-After header**: Respects HubSpot's retry guidance
+
+### Best Practices
+
+1. **Set appropriate batch size**: Use `batchSize: 100` (max) for faster extraction
+2. **Monitor progress**: Check status periodically rather than continuously
+3. **Avoid concurrent scans**: Limit to 3-5 concurrent scans per portal
+4. **Space out scans**: Wait 1-2 minutes between starting new scans
+
+---
+
+## 📝 API Changelog
+
+### Version 1.0.0 (2024-12-07)
+
+**Initial Release**
+- Deal extraction from HubSpot CRM API v3
+- Multi-tenant support with schema isolation
+- Checkpoint and resume functionality
+- Progress monitoring and status tracking
+- Data export in JSON, CSV, and Excel formats
+- Automatic rate limit handling
+- Health checks and service statistics
+
+---
+
+**API Documentation Version**: 1.0.0  
+**Last Updated**: December 2024  
+**Service Version**: 1.0.0  
+**Maintained By**: HubSpot Deals ETL Team
