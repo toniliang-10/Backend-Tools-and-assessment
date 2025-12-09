@@ -359,8 +359,6 @@ class ExtractionService:
             # Only complete if not cancelled
             self.job_service.complete_job(job_id, records_extracted, metadata)
 
-            self.job_service.complete_job(job_id, records_extracted, metadata)
-
             self.logger.info(
                 "Scan completed successfully",
                 extra={

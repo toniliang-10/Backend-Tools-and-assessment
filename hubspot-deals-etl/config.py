@@ -41,12 +41,10 @@ class Config:
     DLT_WORKING_DIR = os.environ.get('DLT_WORKING_DIR', '.dlt')
     DLT_RUNTIME_ENV = os.environ.get('DLT_RUNTIME_ENV', 'production')
     
-    # External API settings
-    API_BASE_URL = os.environ.get('API_BASE_URL', 'https://api.example.com')
+    # HubSpot API settings
+    API_BASE_URL = os.environ.get('API_BASE_URL', 'https://api.hubapi.com')
     API_TIMEOUT = int(os.environ.get('API_TIMEOUT', 30))
-    API_RATE_LIMIT = int(os.environ.get('API_RATE_LIMIT', 100))
-    API_USERS_ENDPOINT = os.environ.get('API_USERS_ENDPOINT', '/users')
-    API_TEAMS_ENDPOINT = os.environ.get('API_TEAMS_ENDPOINT', '/teams')
+    API_RATE_LIMIT = int(os.environ.get('API_RATE_LIMIT', 100))  # 100 requests per 10 seconds
     API_RETRY_ATTEMPTS = int(os.environ.get('API_RETRY_ATTEMPTS', 3))
     API_RETRY_DELAY = int(os.environ.get('API_RETRY_DELAY', 1))
     
@@ -145,12 +143,12 @@ class Config:
             'scan_timeout_hours': cls.SCAN_TIMEOUT_HOURS,
             'default_batch_size': cls.DEFAULT_BATCH_SIZE,
             
-            # External API configuration
+            # HubSpot API configuration
             'api_base_url': cls.API_BASE_URL,
             'api_timeout': cls.API_TIMEOUT,
             'api_rate_limit': cls.API_RATE_LIMIT,
-            'api_users_endpoint': cls.API_USERS_ENDPOINT,
-            'api_teams_endpoint': cls.API_TEAMS_ENDPOINT,
+            # 'api_users_endpoint': cls.API_USERS_ENDPOINT,
+            # 'api_teams_endpoint': cls.API_TEAMS_ENDPOINT,
             'api_retry_attempts': cls.API_RETRY_ATTEMPTS,
             'api_retry_delay': cls.API_RETRY_DELAY,
             
@@ -182,10 +180,10 @@ class Config:
                 'environment': cls.DLT_RUNTIME_ENV
             },
             'sources': {
-                'data_source': {
+                'hubspot_deals': {
                     'base_url': cls.API_BASE_URL,
-                    'users_endpoint': cls.API_USERS_ENDPOINT,
-                    'teams_endpoint': cls.API_TEAMS_ENDPOINT,
+                    # 'users_endpoint': cls.API_USERS_ENDPOINT,
+                    # 'teams_endpoint': cls.API_TEAMS_ENDPOINT,
                     'batch_size': cls.DEFAULT_BATCH_SIZE,
                     'timeout': cls.API_TIMEOUT,
                     'retry_attempts': cls.API_RETRY_ATTEMPTS
@@ -265,8 +263,8 @@ class Config:
             'api_base_url': cls.API_BASE_URL,
             'api_timeout': cls.API_TIMEOUT,
             'api_rate_limit': cls.API_RATE_LIMIT,
-            'users_endpoint': cls.API_USERS_ENDPOINT,
-            'teams_endpoint': cls.API_TEAMS_ENDPOINT,
+            # 'users_endpoint': cls.API_USERS_ENDPOINT,
+            # 'teams_endpoint': cls.API_TEAMS_ENDPOINT,
             'retry_attempts': cls.API_RETRY_ATTEMPTS,
             'retry_delay': cls.API_RETRY_DELAY,
             "max_scan_list_limit": 100,      # Max number of scans to return per page
